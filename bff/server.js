@@ -15,6 +15,11 @@ app.use(cors({
   credentials: true,
 }))
 
+// To persis session, use a store like Redis in production.
+// app.use(session({
+//   store: new RedisStore({ client: redisClient }),
+//   // ... same cookie config
+// }))
 app.use(session({
   name: config.cookie.name,
   secret: config.sessionSecret,
