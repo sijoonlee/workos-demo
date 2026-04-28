@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WorkOS SSO PoC</title>
+  <script src="/env.js"></script>
+  <style>
+    body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
+    .card { background: white; padding: 2rem 3rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center; }
+    button { padding: 0.6rem 1.4rem; font-size: 1rem; cursor: pointer; border: none; background: #4285f4; color: white; border-radius: 4px; }
+    button:hover { background: #3367d6; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Welcome</h1>
+    <p id="status">Checking session…</p>
+    <button id="login-btn" style="display:none">Sign in with Google</button>
+  </div>
+  <script>
+    const BFF_URL = window.__APP_CONFIG__.bffUrl
+
+    document.getElementById('login-btn').addEventListener('click', () => {
+      window.location.href = BFF_URL + '/auth/login'
+    })
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const res = await fetch(BFF_URL + '/auth/session', { credentials: 'include' })
+        const data = await res.json()
+        if (data.authenticated) {
+          window.location.href = '/profile.html'
+        } else {
+          document.getElementById('status').textContent = 'Please sign in to continue.'
+          document.getElementById('login-btn').style.display = 'inline-block'
+        }
+      } catch {
+        document.getElementById('status').textContent = 'Could not reach server.'
+      }
+    })
+  </script>
+</body>
+</html>

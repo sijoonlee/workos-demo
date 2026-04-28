@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile — WorkOS SSO PoC</title>
+  <script src="/env.js"></script>
+  <style>
+    body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f5f5f5; }
+    .card { background: white; padding: 2rem 3rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); min-width: 300px; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    td { padding: 0.4rem 0.6rem; }
+    td:first-child { font-weight: bold; color: #555; }
+    a { display: inline-block; margin-top: 1rem; color: #c0392b; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>You're logged in!</h1>
+    <table>
+      <tr><td>Name</td><td id="name">…</td></tr>
+      <tr><td>Email</td><td id="email">…</td></tr>
+    </table>
+    <a id="logout-link" href="#">Sign out</a>
+  </div>
+  <script>
+    const BFF_URL = window.__APP_CONFIG__.bffUrl
+
+    document.getElementById('logout-link').href = BFF_URL + '/auth/logout'
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const res = await fetch(BFF_URL + '/auth/session', { credentials: 'include' })
+        const data = await res.json()
+        if (!data.authenticated) {
+          window.location.href = '/'
+          return
+        }
+        document.getElementById('name').textContent =
+          data.user.firstName + ' ' + data.user.lastName
+        document.getElementById('email').textContent = data.user.email
+      } catch {
+        window.location.href = '/'
+      }
+    })
+  </script>
+</body>
+</html>
