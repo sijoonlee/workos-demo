@@ -18,6 +18,17 @@ router.get('/login', async (req, res) => {
   const codeVerifier = crypto.randomBytes(32).toString('base64url')
   const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url')
 
+  // The codeVerifier is stored in the session at /auth/login so it can be retrieved at /auth/callback.
+  // The PKCE flow spans two separate HTTP requests:
+  //   1. /auth/login — generates the codeVerifier/codeChallenge pair,
+  //                    sends codeChallenge to WorkOS, and must hold onto codeVerifier somewhere until the callback arrives
+  //   2. /auth/callback — receives the authorization code from WorkOS
+  //                       and must prove it's the same party that initiated the login by submitting the original codeVerifier
+  // The session is the only safe place to keep codeVerifier between those two requests
+  // : it lives server-side and never touches the browser.
+  // That's exactly what makes this the BFF pattern: the browser only ever sees the redirect, never the verifier itself.
+  // Note: The session is identified by a cookie (sid) that the browser stores after the first request
+  // and sends back automatically on every subsequent request to the same origin
   req.session.codeVerifier = codeVerifier
 
   const authUrl = workos.userManagement.getAuthorizationUrl({
