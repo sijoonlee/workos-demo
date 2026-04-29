@@ -11,12 +11,13 @@ const sessionSecret = required('SESSION_SECRET')
 const workosApiKey = required('WORKOS_API_KEY')
 const workosClientId = required('WORKOS_CLIENT_ID')
 
-let frontendUrl, bffUrl
+let frontendUrls, bffUrl
 if (isProduction) {
-  frontendUrl = required('FRONTEND_URL')
+  frontendUrls = required('FRONTEND_URLS').split(',').map(u => u.trim())
   bffUrl = required('BFF_URL')
 } else {
-  frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000'
+  const raw = process.env.FRONTEND_URLS || 'http://localhost:3000,http://localhost:3002'
+  frontendUrls = raw.split(',').map(u => u.trim())
   bffUrl = process.env.BFF_URL || 'http://localhost:3001'
 }
 
@@ -26,7 +27,7 @@ const cookie = isProduction
 
 module.exports = {
   appEnv,
-  frontendUrl,
+  frontendUrls,
   bffUrl,
   sessionSecret,
   workosApiKey,

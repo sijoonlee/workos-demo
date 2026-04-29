@@ -3,31 +3,39 @@
 ## System Architecture
 
 ```
-  Browser
+  Browser (on Site A or Site B)
     │
-    ├─(A) GET <FRONTEND_URL>/             ──► Frontend Server
-    │                                          serves index.html + env.js
+    ├─(A) GET <FRONTEND_URL_A>/           ──► Frontend Server A   (port 3000 / domain-a.com)
+    │   or GET <FRONTEND_URL_B>/          ──► Frontend Server B   (port 3002 / domain-b.com)
+    │                                          each serves its own index.html + env.js
     │
-    ├─(B) fetch <BFF_URL>/auth/session    ──► BFF Server
-    │◄─── { authenticated, user }  ◄──────────
+    ├─(B) fetch <BFF_URL>/auth/session    ──► BFF Server          (port 3001 / api.example.com)
+    │◄─── { authenticated, user }  ◄──────────  (shared — same session cookie on same BFF origin)
     │
-    ├─(C) navigate <BFF_URL>/auth/login   ──► BFF Server
-    │◄─── 302 → WorkOS authorization URL ◄────
+    ├─(C) navigate <BFF_URL>/auth/login?returnTo=<FRONTEND_URL_A>
+    │                                     ──► BFF Server
+    │◄─── 302 → WorkOS authorization URL ◄────  (returnTo stored in session)
     │
     ├─(D) browser → WorkOS / Google login
     │
     ├─(E) GET <BFF_URL>/auth/callback     ──► BFF Server
-    │         (WorkOS redirect)                exchanges code+verifier
-    │◄─── 302 → <FRONTEND_URL>/profile.html
+    │         (WorkOS redirect)                exchanges code+verifier, reads returnTo from session
+    │◄─── 302 → <returnTo>/profile.html   ◄───  (redirects back to originating site)
     │
-    ├─(H) GET <FRONTEND_URL>/profile.html ──► Frontend Server
+    ├─(H) GET <FRONTEND_URL_A>/profile.html ──► Frontend Server A
     │
     ├─(I) fetch <BFF_URL>/auth/session    ──► BFF Server
     │◄─── { authenticated: true, user }  ◄────
     │      (page renders name + email)
     │
-    └─(J) navigate <BFF_URL>/auth/logout  ──► BFF Server
-          ◄─── 302 → <FRONTEND_URL>/  ◄────────
+    ├─(K) GET <FRONTEND_URL_B>/           ──► Frontend Server B   (different site, same session)
+    │
+    ├─(L) fetch <BFF_URL>/auth/session    ──► BFF Server
+    │◄─── { authenticated: true, user }  ◄────  (shared session — already signed in)
+    │
+    └─(J) navigate <BFF_URL>/auth/logout?returnTo=<FRONTEND_URL_A>
+                                          ──► BFF Server
+          ◄─── 302 → <returnTo>/  ◄────────    (returns to originating site)
 ```
 
 ## Tech Stack
@@ -74,11 +82,11 @@ workos-sso-poc/
 ```js
 // shared/config.js — shape
 config = {
-  appEnv:      'local' | 'production',
-  frontendUrl: string,   // e.g. 'http://localhost:3000' or 'https://app.example.com'
-  bffUrl:      string,   // e.g. 'http://localhost:3001' or 'https://api.example.com'
+  appEnv:       'local' | 'production',
+  frontendUrls: string[],  // e.g. ['http://localhost:3000','http://localhost:3002'] or ['https://app1.example.com','https://app2.example.com']
+  bffUrl:       string,    // e.g. 'http://localhost:3001' or 'https://api.example.com'
   cookie: {
-    secure:   boolean,   // false in local, true in production
+    secure:   boolean,     // false in local, true in production
     sameSite: 'lax' | 'none',
     name:     'sid' | '__Host-sid',
   }
@@ -87,6 +95,7 @@ config = {
 // Session shape (stored server-side in express-session)
 session = {
   codeVerifier: string | undefined,   // set in /auth/login, cleared in /auth/callback
+  returnTo:     string | undefined,   // validated frontend origin, set in /auth/login, cleared in /auth/callback
   user: {
     firstName: string,
     lastName:  string,
@@ -102,15 +111,15 @@ session = {
 
 ### Runtime config injection (`/env.js`)
 
-Static HTML cannot read Node env vars directly. The frontend server exposes a dynamic
+Static HTML cannot read Node env vars directly. Each frontend server exposes a dynamic
 `GET /env.js` route that writes `window.__APP_CONFIG__` so inline scripts can resolve
-`BFF_URL` without hardcoding:
+`BFF_URL` and the site's own `FRONTEND_URL` without hardcoding:
 
 ```js
 // frontend/server.js — dynamic route (before express.static)
 app.get('/env.js', (req, res) => {
   res.type('application/javascript')
-  res.send(`window.__APP_CONFIG__ = ${JSON.stringify({ bffUrl: config.bffUrl })};`)
+  res.send(`window.__APP_CONFIG__ = ${JSON.stringify({ bffUrl: config.bffUrl, frontendUrl: config.frontendUrl })};`)
 })
 ```
 
@@ -119,9 +128,15 @@ app.get('/env.js', (req, res) => {
 <script src="/env.js"></script>
 <script>
   const BFF_URL = window.__APP_CONFIG__.bffUrl
-  // fetch(BFF_URL + '/auth/session', { credentials: 'include' })
+  const FRONTEND_URL = window.__APP_CONFIG__.frontendUrl
+  // Login button: window.location.href = BFF_URL + '/auth/login?returnTo=' + FRONTEND_URL
+  // Logout link:  BFF_URL + '/auth/logout?returnTo=' + FRONTEND_URL
 </script>
 ```
+
+Each frontend server reads its own `FRONTEND_URL` env var (defaults to `http://localhost:3000`
+for Site A, `http://localhost:3002` for Site B) and injects it into `env.js` so the pages
+can pass the correct `returnTo` value without any hardcoding.
 
 ## Data Flow
 
@@ -129,20 +144,20 @@ app.get('/env.js', (req, res) => {
 
 ```mermaid
 sequenceDiagram
-    participant B as Browser
-    participant F as Frontend
+    participant B as Browser (on Site A)
+    participant F as Frontend A
     participant BFF as BFF
     participant W as WorkOS / Google
 
     B->>F: GET /
-    F-->>B: index.html + /env.js (sets window.__APP_CONFIG__)
+    F-->>B: index.html + /env.js (sets window.__APP_CONFIG__ with bffUrl + frontendUrl)
 
     B->>BFF: fetch GET /auth/session (credentials: include)
     BFF-->>B: { authenticated: false }
     note over B: show Sign in button
 
-    B->>BFF: navigate GET /auth/login
-    note over BFF: PKCE.generate()<br/>store codeVerifier in session
+    B->>BFF: navigate GET /auth/login?returnTo=http://localhost:3000
+    note over BFF: validate returnTo against FRONTEND_URLS allowlist<br/>generate codeVerifier/codeChallenge<br/>store codeVerifier + returnTo in session
     BFF-->>B: 302 → WorkOS authorization URL
 
     B->>W: GET /authorize?code_challenge=...
@@ -150,11 +165,11 @@ sequenceDiagram
     note over B: user authenticates
 
     B->>BFF: GET /auth/callback?code=X
-    note over BFF: retrieve codeVerifier from session
+    note over BFF: retrieve codeVerifier + returnTo from session
     BFF->>W: exchange code + codeVerifier
     W-->>BFF: user profile
-    note over BFF: store user in session<br/>clear codeVerifier
-    BFF-->>B: 302 → <FRONTEND_URL>/profile.html
+    note over BFF: store user in session<br/>clear codeVerifier + returnTo
+    BFF-->>B: 302 → <returnTo>/profile.html  (back to Site A)
 ```
 
 ## UI Wireframes
@@ -218,15 +233,21 @@ workos-sso-poc/
 
 **Key decisions:**
 
-- **`APP_ENV` flag in `shared/config.js`** — a single module reads `APP_ENV`, `FRONTEND_URL`, and `BFF_URL` from the environment and exports a `config` object consumed by both servers. This keeps all environment branching in one place.
+- **`APP_ENV` flag in `shared/config.js`** — a single module reads `APP_ENV`, `FRONTEND_URLS` (comma-separated), and `BFF_URL` from the environment and exports a `config` object consumed by both servers. This keeps all environment branching in one place.
 
-- **`/env.js` dynamic route** — static HTML has no access to Node env vars. The frontend server exposes a tiny JS file that sets `window.__APP_CONFIG__.bffUrl`. Both HTML pages load it before their inline scripts, so `BFF_URL` is resolved at runtime without hardcoding.
+- **`FRONTEND_URLS` allowlist** — replaces the single `FRONTEND_URL`. All frontend origins are stored as an array. CORS, `returnTo` validation, and logout fallback all operate against this list. Adding a new site only requires adding its origin to the env var.
+
+- **`returnTo` query param on `/auth/login` and `/auth/logout`** — each frontend passes its own origin as `returnTo`. The BFF validates it against the allowlist before storing in session (login) or using in the redirect (logout). This allows multiple sites to share the BFF while each user lands back on the site they started from. Strict allowlist matching prevents open-redirect attacks.
+
+- **`frontendUrl` injected into `/env.js`** — each frontend server reads its own `FRONTEND_URL` env var and includes it in `window.__APP_CONFIG__` alongside `bffUrl`. Pages use this to construct the `returnTo` value without hardcoding.
+
+- **Session cookie tied to the BFF origin** — because all frontends `fetch` the same BFF with `credentials: 'include'`, the browser sends the same session cookie to the BFF regardless of which frontend initiated the request. Sign-in on Site A is automatically recognised on Site B with no extra token exchange.
 
 - **Cookie flags driven by `APP_ENV`** — `local` uses `sameSite: 'lax'` + `secure: false` (HTTP-friendly); `production` uses `sameSite: 'none'` + `secure: true` (required for cross-origin cookies over HTTPS).
 
 - **Two separate Express processes** — mirrors the RFC §6.1 diagram; `concurrently` starts both from a single `npm start`.
 
-- **CORS pinned to `FRONTEND_URL`** — never a wildcard; satisfies CSRF defense (§6.1.3.3) in both environments.
+- **CORS origin as a function** — checks the request `Origin` header against the `frontendUrls` array dynamically; never a wildcard; satisfies CSRF defense (§6.1.3.3) in both environments.
 
 - **Memory session store** — acceptable for PoC; not suitable for multi-instance production deployment.
 

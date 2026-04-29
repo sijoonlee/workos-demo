@@ -2,7 +2,7 @@
   "name": "workos-sso-poc",
   "version": "1.0.0",
   "scripts": {
-    "start": "concurrently \"node frontend/server.js\" \"node bff/server.js\"",
+    "start": "concurrently \"FRONTEND_URL=http://localhost:3000 node frontend/server.js\" \"FRONTEND_URL=http://localhost:3002 node frontend/server.js\" \"node bff/server.js\"",
     "test": "jest"
   },
   "dependencies": {

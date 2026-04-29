@@ -26,8 +26,10 @@
   </div>
   <script>
     const BFF_URL = window.__APP_CONFIG__.bffUrl
+    const FRONTEND_URL = window.__APP_CONFIG__.frontendUrl
 
-    document.getElementById('logout-link').href = BFF_URL + '/auth/logout'
+    document.getElementById('logout-link').href =
+      BFF_URL + '/auth/logout?returnTo=' + encodeURIComponent(FRONTEND_URL)
 
     document.addEventListener('DOMContentLoaded', async () => {
       try {

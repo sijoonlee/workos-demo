@@ -7,11 +7,14 @@ const authRouter = require('./routes/auth')
 
 const app = express()
 
-// The `cors` package emits Access-Control-Allow-Credentials: true for all origins,
-// but CSRF protection comes from Access-Control-Allow-Origin being pinned to
-// frontendUrl — browsers block credentialed requests when the origin doesn't match.
 app.use(cors({
-  origin: config.frontendUrl,
+  origin: (origin, callback) => {
+    if (origin && config.frontendUrls.includes(origin)) {
+      callback(null, origin)
+    } else {
+      callback(null, false)
+    }
+  },
   credentials: true,
 }))
 

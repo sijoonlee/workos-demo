@@ -20,9 +20,10 @@
   </div>
   <script>
     const BFF_URL = window.__APP_CONFIG__.bffUrl
+    const FRONTEND_URL = window.__APP_CONFIG__.frontendUrl
 
     document.getElementById('login-btn').addEventListener('click', () => {
-      window.location.href = BFF_URL + '/auth/login'
+      window.location.href = BFF_URL + '/auth/login?returnTo=' + encodeURIComponent(FRONTEND_URL)
     })
 
     document.addEventListener('DOMContentLoaded', async () => {
