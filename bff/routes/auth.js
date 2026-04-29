@@ -56,11 +56,34 @@ router.get('/callback', async (req, res) => {
   if (!codeVerifier) return res.status(400).send('Missing code verifier')
 
   try {
-    const { user } = await workos.userManagement.authenticateWithCodeAndVerifier({
+    const {
+      user,
+      organizationId,
+      // this is access token for google.
+      // you'll not need this unless you make request to google on behalf of the user from your BFF
+      accessToken,
+      // this is refresh token for google.
+      refreshToken,
+      impersonator,
+      authenticationMethod,
+      sealedSession,
+      oauthTokens,
+    } = await workos.userManagement.authenticateWithCodeAndVerifier({
       code,
       codeVerifier,
       clientId: config.workosClientId,
-    })
+    });
+
+    console.log(JSON.stringify({
+      user,
+      organizationId,
+      accessToken,
+      refreshToken,
+      impersonator,
+      authenticationMethod,
+      sealedSession,
+      oauthTokens,
+    }, null, 4));
 
     req.session.user = {
       firstName: user.firstName ?? '',
