@@ -28,6 +28,7 @@
     const BFF_URL = window.__APP_CONFIG__.bffUrl
     const FRONTEND_URL = window.__APP_CONFIG__.frontendUrl
 
+    console.log('[profile.html] Checking session at', BFF_URL + '/auth/session')
     document.getElementById('logout-link').href =
       BFF_URL + '/auth/logout?returnTo=' + encodeURIComponent(FRONTEND_URL)
 

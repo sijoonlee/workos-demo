@@ -2,7 +2,8 @@
   "name": "workos-sso-poc",
   "version": "1.0.0",
   "scripts": {
-    "start": "concurrently \"FRONTEND_URL=http://localhost:3000 node frontend/server.js\" \"FRONTEND_URL=http://localhost:3002 node frontend/server.js\" \"node bff/server.js\"",
+    "start": "concurrently \"FRONTEND_URL=http://localhost:3000 PORT=3000 node frontend/server.js\" \"FRONTEND_URL=http://localhost:3002 PORT=3002 node frontend/server.js\" \"node bff/server.js\"",
+    "prod": "concurrently \"FRONTEND_URL=https://sijoon-frontend.ngrok-free.app PORT=3000 node frontend/server.js\" \"FRONTEND_URL=https://sustainable-wendy-welldecked.ngrok-free.dev PORT=3002 node frontend/server.js\" \"node bff/server.js\"",
     "test": "jest"
   },
   "dependencies": {

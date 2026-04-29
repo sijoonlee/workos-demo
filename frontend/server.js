@@ -4,7 +4,7 @@ const path = require('path')
 const config = require('../shared/config')
 
 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000'
-const port = new URL(frontendUrl).port || 3000
+const port = process.env.PORT || new URL(frontendUrl).port || 3000
 
 const app = express()
 

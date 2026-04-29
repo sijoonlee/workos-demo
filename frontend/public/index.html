@@ -28,6 +28,7 @@
 
     document.addEventListener('DOMContentLoaded', async () => {
       try {
+        console.log('Checking session at', BFF_URL + '/auth/session')
         const res = await fetch(BFF_URL + '/auth/session', { credentials: 'include' })
         const data = await res.json()
         if (data.authenticated) {

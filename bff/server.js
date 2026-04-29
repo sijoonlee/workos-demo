@@ -7,6 +7,13 @@ const authRouter = require('./routes/auth')
 
 const app = express()
 
+// Trust the X-Forwarded-Proto header from reverse proxies (ngrok, load balancers).
+// Without this, req.secure is false on the local HTTP connection even when the
+// client connected over HTTPS, and express-session won't set Secure cookies.
+if (config.appEnv === 'production') {
+  app.set('trust proxy', 1)
+}
+
 app.use(cors({
   origin: (origin, callback) => {
     if (origin && config.frontendUrls.includes(origin)) {
@@ -34,6 +41,10 @@ app.use(session({
     sameSite: config.cookie.sameSite,
   },
 }))
+
+app.get('/', (req, res) => {
+  res.send('<h1>hello</h1>')
+})
 
 app.use('/auth', authRouter)
 

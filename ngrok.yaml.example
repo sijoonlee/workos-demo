@@ -1,0 +1,15 @@
+version: "2"
+authtoken: <auth token>
+tunnels:
+  frontendOne:
+    proto: http
+    addr: 3000
+    domain: sustainable-wendy-welldecked.ngrok-free.dev
+  frontendTwo:
+    proto: http
+    addr: 3002
+    domain: sijoon-frontend.ngrok-free.app
+  backend:
+    proto: http
+    addr: 3001
+    domain: sijoonlee-bff.ngrok.app
