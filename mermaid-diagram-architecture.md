@@ -20,7 +20,9 @@ sequenceDiagram
     note over B: user authenticates
 
     B->>BFF: (E) GET /auth/callback?code=X
-    note over BFF: exchange code + codeVerifier<br/>store user in session<br/>clear codeVerifier + returnTo
+    BFF->>W: POST /token (code + codeVerifier)
+    W-->>BFF: { accessToken, user }
+    note over BFF: store user in session<br/>clear codeVerifier + returnTo
     BFF-->>B: 302 → FRONTEND_URL/signed-in
 
     B->>FA: (H) GET /signed-in
