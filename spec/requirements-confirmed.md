@@ -4,6 +4,8 @@
 
 A proof-of-concept application consisting of two separate Express servers following the OAuth 2.0 BFF pattern (draft-ietf-oauth-browser-based-apps §6.1): a **frontend server** that serves static HTML pages, and a **BFF server** that acts as a confidential OAuth client handling all session and auth logic. The BFF integrates with WorkOS SSO via Google using PKCE. The frontend checks session state on load via a dedicated BFF endpoint and adapts its UI accordingly. After a successful login, the user sees a profile page confirming their identity.
 
+Multiple frontend sites (different domains in production, different ports locally) share the same sign-in state through the single BFF. A sign-in on any one site is immediately recognised on all others because the session cookie is tied to the BFF's domain.
+
 An `APP_ENV` flag switches all environment-dependent behaviour (URLs, cookie security, CORS) between `local` and `production` modes without code changes.
 
 ## User Stories
@@ -21,15 +23,16 @@ An `APP_ENV` flag switches all environment-dependent behaviour (URLs, cookie sec
 - [ ] The frontend redirects to `<FRONTEND_URL>/profile.html` automatically when `authenticated` is `true`
 
 ### US-2: Initiate SSO Login with PKCE
-**As a** visitor on the static HTML page  
+**As a** visitor on any of the frontend sites  
 **I want** to click a "Sign in with Google" button  
-**So that** I am redirected to Google's login via WorkOS SSO with a PKCE-secured flow
+**So that** I am redirected to Google's login via WorkOS SSO with a PKCE-secured flow and returned to the site I started from
 
 #### Acceptance Criteria
-- [ ] Clicking the button navigates the browser to `<BFF_URL>/auth/login`
-- [ ] The BFF uses `new PKCE().generate()` from `@workos-inc/node` to produce `codeVerifier` and `codeChallenge`
-- [ ] The `codeVerifier` is stored in the server-side session before the redirect
-- [ ] The BFF redirects to the WorkOS authorization URL with `codeChallenge` and `codeVerifier` included, within 500ms
+- [ ] Clicking the button navigates the browser to `<BFF_URL>/auth/login?returnTo=<origin>` where `<origin>` is the frontend site's base URL
+- [ ] The BFF validates `returnTo` against the configured `FRONTEND_URLS` allowlist; if invalid, responds `400`
+- [ ] The BFF uses `crypto.randomBytes` / `crypto.createHash` to produce `codeVerifier` and `codeChallenge`
+- [ ] Both `codeVerifier` and the validated `returnTo` value are stored in the server-side session before the redirect
+- [ ] The BFF redirects to the WorkOS authorization URL with `codeChallenge` and `codeChallengeMethod: 'S256'` included, within 500ms
 
 ### US-3: Complete SSO Callback with PKCE Verification
 **As a** user returning from Google's login  
@@ -38,9 +41,9 @@ An `APP_ENV` flag switches all environment-dependent behaviour (URLs, cookie sec
 
 #### Acceptance Criteria
 - [ ] The BFF exposes `GET /auth/callback` and accepts the WorkOS `code` parameter
-- [ ] The BFF retrieves the stored `codeVerifier` from the session
+- [ ] The BFF retrieves the stored `codeVerifier` and `returnTo` from the session
 - [ ] The BFF exchanges the `code` + `codeVerifier` for a WorkOS profile via the WorkOS SDK
-- [ ] On success, the BFF stores the user profile in the server-side session, clears the `codeVerifier`, and redirects to `<FRONTEND_URL>/profile.html`
+- [ ] On success, the BFF stores the user profile in the server-side session, clears both `codeVerifier` and `returnTo`, and redirects to `<returnTo>/profile.html`
 - [ ] On failure (invalid/missing code or verifier mismatch), the BFF returns a 400 response with a human-readable error message
 
 ### US-4: View Protected Profile Page
@@ -57,12 +60,13 @@ An `APP_ENV` flag switches all environment-dependent behaviour (URLs, cookie sec
 ### US-5: Sign Out
 **As an** authenticated user  
 **I want** to click "Sign out"  
-**So that** my session is destroyed and I am returned to the login page
+**So that** my session is destroyed and I am returned to the login page of the site I was on
 
 #### Acceptance Criteria
-- [ ] Clicking "Sign out" navigates the browser to `<BFF_URL>/auth/logout`
+- [ ] Clicking "Sign out" navigates the browser to `<BFF_URL>/auth/logout?returnTo=<origin>` where `<origin>` is the frontend site's base URL
+- [ ] The BFF validates `returnTo` against the `FRONTEND_URLS` allowlist; if invalid or missing, redirects to the first URL in the allowlist
 - [ ] The BFF destroys the server-side session
-- [ ] After logout, the browser is redirected to `<FRONTEND_URL>/` with a 302 status
+- [ ] After logout, the browser is redirected to `<returnTo>/` with a 302 status
 - [ ] After logout, `GET /auth/session` returns `{ authenticated: false }`
 
 ## Non-Functional Requirements
@@ -70,12 +74,12 @@ An `APP_ENV` flag switches all environment-dependent behaviour (URLs, cookie sec
 ### Environment Flag
 - `APP_ENV` controls all environment-dependent behaviour; valid values are `local` and `production`
 - When `APP_ENV=local`:
-  - `FRONTEND_URL` defaults to `http://localhost:3000`
+  - `FRONTEND_URLS` defaults to `http://localhost:3000,http://localhost:3002` (comma-separated)
   - `BFF_URL` defaults to `http://localhost:3001`
   - Cookie `secure` flag is `false`
   - Cookie `sameSite` is `'lax'` (browsers reject `SameSite=None` without `Secure` on HTTP)
 - When `APP_ENV=production`:
-  - `FRONTEND_URL` and `BFF_URL` must be explicitly set in env vars (BFF throws on startup if missing)
+  - `FRONTEND_URLS` and `BFF_URL` must be explicitly set in env vars (BFF throws on startup if missing)
   - Cookie `secure` flag is `true`
   - Cookie `sameSite` is `'none'` (required for cross-origin `fetch` with credentials over HTTPS)
 - `.env.example` documents both modes clearly with inline comments
@@ -86,8 +90,9 @@ An `APP_ENV` flag switches all environment-dependent behaviour (URLs, cookie sec
 - `npm start` starts both servers concurrently using `concurrently`
 
 ### Security — CORS
-- The BFF MUST set `Access-Control-Allow-Origin` to the value of `FRONTEND_URL` (never a wildcard)
+- The BFF MUST set `Access-Control-Allow-Origin` to the requesting origin only if it is present in the `FRONTEND_URLS` allowlist (never a wildcard)
 - The BFF MUST set `Access-Control-Allow-Credentials: true`
+- Requests from origins not in the allowlist MUST NOT receive `Access-Control-Allow-Credentials`
 
 ### Security — Cookie Flags (§6.1.3.2)
 - Session cookies MUST always have the `httpOnly` flag set
@@ -95,13 +100,19 @@ An `APP_ENV` flag switches all environment-dependent behaviour (URLs, cookie sec
 - Session cookie name SHOULD use the `__Host-` prefix in `production` mode; plain `sid` in `local` mode (the `__Host-` prefix requires `Secure`)
 - The `Domain` attribute SHOULD NOT be set on session cookies
 
+### Security — Open Redirect Prevention
+- `returnTo` values on `/auth/login` and `/auth/logout` MUST be validated as an exact match against the `FRONTEND_URLS` allowlist before use in any redirect
+- Only the origin (scheme + host + port) is stored and compared; paths are ignored on the incoming `returnTo` value
+- An invalid `returnTo` on `/auth/login` returns `400`; on `/auth/logout` falls back to the first URL in the allowlist
+
 ### Security — CSRF Protection (§6.1.3.3)
-- CORS `Access-Control-Allow-Origin` is pinned to `FRONTEND_URL` in both modes — no wildcard is ever permitted
+- CORS `Access-Control-Allow-Origin` is pinned to the matched entry from `FRONTEND_URLS` in both modes — no wildcard is ever permitted
 
 ### Security — General
 - Session secret is loaded from `SESSION_SECRET` env var; BFF throws on startup if missing
 - WorkOS API key and Client ID are loaded from `WORKOS_API_KEY`, `WORKOS_CLIENT_ID`; BFF throws on startup if missing
 - PKCE `codeVerifier` is generated with `crypto.randomBytes(32).toString('base64url')`; `codeChallenge` is `crypto.createHash('sha256').update(verifier).digest('base64url')` — the `PKCE` class is not available in `@workos-inc/node` v7.x
+- `returnTo` stored in session during `/auth/login` is the validated origin string (e.g. `http://localhost:3000`); it is deleted from the session after use in `/auth/callback`
 - `codeVerifier` is deleted from the session immediately after the token exchange (one-time use)
 
 ### Performance

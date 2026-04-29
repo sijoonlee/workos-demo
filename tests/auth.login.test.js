@@ -15,22 +15,33 @@ jest.mock('@workos-inc/node', () => ({
 const app = require('../bff/server')
 
 test('GET /auth/login redirects to a WorkOS authorization URL', async () => {
-  const res = await request(app).get('/auth/login')
+  const res = await request(app).get('/auth/login?returnTo=http://localhost:3000')
   expect(res.status).toBe(302)
   expect(res.headers.location).toBe('https://api.workos.com/sso/authorize?fake=1')
 })
 
-test('GET /auth/login stores codeVerifier in session', async () => {
+test('GET /auth/login stores codeVerifier and returnTo in session', async () => {
   const agent = request.agent(app)
 
   app.get('/__test_get_session', (req, res) => {
-    res.json({ codeVerifier: req.session.codeVerifier })
+    res.json({ codeVerifier: req.session.codeVerifier, returnTo: req.session.returnTo })
   })
 
-  await agent.get('/auth/login')
+  await agent.get('/auth/login?returnTo=http://localhost:3000')
   const res = await agent.get('/__test_get_session')
 
   expect(res.body.codeVerifier).toBeDefined()
   expect(typeof res.body.codeVerifier).toBe('string')
   expect(res.body.codeVerifier.length).toBeGreaterThan(0)
+  expect(res.body.returnTo).toBe('http://localhost:3000')
+})
+
+test('GET /auth/login returns 400 when returnTo is missing', async () => {
+  const res = await request(app).get('/auth/login')
+  expect(res.status).toBe(400)
+})
+
+test('GET /auth/login returns 400 when returnTo is not in the allowlist', async () => {
+  const res = await request(app).get('/auth/login?returnTo=http://evil.com')
+  expect(res.status).toBe(400)
 })

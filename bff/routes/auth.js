@@ -6,6 +6,14 @@ const config = require('../../shared/config')
 const router = express.Router()
 const workos = new WorkOS(config.workosApiKey)
 
+function extractOrigin(url) {
+  try {
+    return new URL(url).origin
+  } catch {
+    return null
+  }
+}
+
 router.get('/session', (req, res) => {
   if (req.session.user) {
     const { firstName, lastName, email } = req.session.user
@@ -15,21 +23,19 @@ router.get('/session', (req, res) => {
 })
 
 router.get('/login', async (req, res) => {
+  const origin = extractOrigin(req.query.returnTo)
+  if (!origin || !config.frontendUrls.includes(origin)) {
+    return res.status(400).send('Invalid or missing returnTo parameter')
+  }
+
   const codeVerifier = crypto.randomBytes(32).toString('base64url')
   const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url')
 
-  // The codeVerifier is stored in the session at /auth/login so it can be retrieved at /auth/callback.
-  // The PKCE flow spans two separate HTTP requests:
-  //   1. /auth/login — generates the codeVerifier/codeChallenge pair,
-  //                    sends codeChallenge to WorkOS, and must hold onto codeVerifier somewhere until the callback arrives
-  //   2. /auth/callback — receives the authorization code from WorkOS
-  //                       and must prove it's the same party that initiated the login by submitting the original codeVerifier
-  // The session is the only safe place to keep codeVerifier between those two requests
-  // : it lives server-side and never touches the browser.
-  // That's exactly what makes this the BFF pattern: the browser only ever sees the redirect, never the verifier itself.
-  // Note: The session is identified by a cookie (sid) that the browser stores after the first request
-  // and sends back automatically on every subsequent request to the same origin
+  // The codeVerifier and returnTo are stored in the session so they survive the round-trip
+  // to WorkOS and back. The session is the only safe place — it lives server-side and
+  // never touches the browser. returnTo tells the callback which site initiated the login.
   req.session.codeVerifier = codeVerifier
+  req.session.returnTo = origin
 
   const authUrl = workos.userManagement.getAuthorizationUrl({
     clientId: config.workosClientId,
@@ -43,8 +49,13 @@ router.get('/login', async (req, res) => {
 })
 
 router.get('/logout', (req, res) => {
+  const origin = extractOrigin(req.query.returnTo)
+  const target = (origin && config.frontendUrls.includes(origin))
+    ? origin
+    : config.frontendUrls[0]
+
   req.session.destroy(() => {
-    res.redirect(config.frontendUrl)
+    res.redirect(`${target}/`)
   })
 })
 
@@ -52,38 +63,16 @@ router.get('/callback', async (req, res) => {
   const { code } = req.query
   if (!code) return res.status(400).send('Missing authorization code')
 
-  const { codeVerifier } = req.session
+  const { codeVerifier, returnTo } = req.session
   if (!codeVerifier) return res.status(400).send('Missing code verifier')
+  if (!returnTo) return res.status(400).send('Missing return URL')
 
   try {
-    const {
-      user,
-      organizationId,
-      // this is access token for google.
-      // you'll not need this unless you make request to google on behalf of the user from your BFF
-      accessToken,
-      // this is refresh token for google.
-      refreshToken,
-      impersonator,
-      authenticationMethod,
-      sealedSession,
-      oauthTokens,
-    } = await workos.userManagement.authenticateWithCodeAndVerifier({
+    const { user } = await workos.userManagement.authenticateWithCodeAndVerifier({
       code,
       codeVerifier,
       clientId: config.workosClientId,
-    });
-
-    console.log(JSON.stringify({
-      user,
-      organizationId,
-      accessToken,
-      refreshToken,
-      impersonator,
-      authenticationMethod,
-      sealedSession,
-      oauthTokens,
-    }, null, 4));
+    })
 
     req.session.user = {
       firstName: user.firstName ?? '',
@@ -91,8 +80,9 @@ router.get('/callback', async (req, res) => {
       email: user.email,
     }
     delete req.session.codeVerifier
+    delete req.session.returnTo
 
-    res.redirect(`${config.frontendUrl}/profile.html`)
+    res.redirect(`${returnTo}/profile.html`)
   } catch (err) {
     res.status(400).send(err.message || 'Authentication failed')
   }

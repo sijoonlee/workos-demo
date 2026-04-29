@@ -20,19 +20,31 @@ app.get('/__test_set_user', (req, res) => {
   res.sendStatus(200)
 })
 
-test('GET /auth/logout destroys session and redirects to frontend root', async () => {
+test('GET /auth/logout destroys session and redirects to the given returnTo', async () => {
   const agent = request.agent(app)
   await agent.get('/__test_set_user')
 
-  const res = await agent.get('/auth/logout')
+  const res = await agent.get('/auth/logout?returnTo=http://localhost:3000').redirects(0)
   expect(res.status).toBe(302)
-  expect(res.headers.location).toBe('http://localhost:3000')
+  expect(res.headers.location).toBe('http://localhost:3000/')
+})
+
+test('GET /auth/logout falls back to first frontend URL when returnTo is missing', async () => {
+  const res = await request(app).get('/auth/logout')
+  expect(res.status).toBe(302)
+  expect(res.headers.location).toBe('http://localhost:3000/')
+})
+
+test('GET /auth/logout falls back to first frontend URL when returnTo is not in allowlist', async () => {
+  const res = await request(app).get('/auth/logout?returnTo=http://evil.com')
+  expect(res.status).toBe(302)
+  expect(res.headers.location).toBe('http://localhost:3000/')
 })
 
 test('GET /auth/session returns authenticated:false after logout', async () => {
   const agent = request.agent(app)
   await agent.get('/__test_set_user')
-  await agent.get('/auth/logout')
+  await agent.get('/auth/logout?returnTo=http://localhost:3000').redirects(0)
 
   const res = await agent.get('/auth/session')
   expect(res.status).toBe(200)
