@@ -11,8 +11,8 @@
       "linkOnly": false,
       "hideOnLogin": false,
       "config": {
-        "clientId": "${env.GOOGLE_CLIENT_ID}",
-        "clientSecret": "${env.GOOGLE_CLIENT_SECRET}",
+        "clientId": "${GOOGLE_CLIENT_ID}",
+        "clientSecret": "${GOOGLE_CLIENT_SECRET}",
         "syncMode": "IMPORT",
         "issuer": "https://accounts.google.com",
         "disableUserInfo": "false",
@@ -25,7 +25,7 @@
       "clientId": "testclient",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
-      "secret": "${env.KEYCLOAK_CLIENT_SECRET}",
+      "secret": "${KEYCLOAK_CLIENT_SECRET}",
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
@@ -42,7 +42,8 @@
         "post.logout.redirect.uris": "http://localhost:3000/*##http://localhost:3002/*",
         "pkce.code.challenge.method": "S256",
         "frontchannel.logout.session.required": "true",
-        "backchannel.logout.session.required": "true"
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.url": "http://localhost:3001/auth/backchannel-logout"
       }
     }
   ]

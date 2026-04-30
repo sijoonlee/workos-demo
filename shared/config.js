@@ -13,6 +13,7 @@ const authProvider = process.env.AUTH_PROVIDER || 'workos' // 'workos' | 'keyclo
 
 const workosApiKey = authProvider === 'workos' ? required('WORKOS_API_KEY') : ''
 const workosClientId = authProvider === 'workos' ? required('WORKOS_CLIENT_ID') : ''
+const workosWebhookSecret = process.env.WORKOS_WEBHOOK_SECRET || ''
 
 const keycloakBaseUrl = process.env.KEYCLOAK_BASE_URL || ''
 const keycloakRealm = process.env.KEYCLOAK_REALM || ''
@@ -42,6 +43,7 @@ module.exports = {
   authProvider,
   workosApiKey,
   workosClientId,
+  workosWebhookSecret,
   keycloakBaseUrl,
   keycloakRealm,
   keycloakClientId,
