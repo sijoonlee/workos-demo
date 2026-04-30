@@ -1,7 +1,6 @@
 services:
   keycloak:
-    image: quay.io/keycloak/keycloak:26.6.1
-    command: start-dev --import-realm
+    build: .
     ports:
       - "8080:8080"
     environment:
@@ -14,4 +13,3 @@ services:
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
     volumes:
       - ./theme/google-only:/opt/keycloak/themes/google-only
-      - ./realm:/opt/keycloak/data/import

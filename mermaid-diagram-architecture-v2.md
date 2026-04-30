@@ -5,9 +5,10 @@ sequenceDiagram
     participant BFF as BFF
     participant AS as Auth Server<br/>(WorkOS / Keycloak)
     participant Google as Google
+    participant CAS as Custom Auth Service
 
     rect rgb(220, 235, 255)
-        note over B,Google: OAuth BFF Pattern (Authorization Code + PKCE)
+        note over B,CAS: OAuth BFF Pattern (Authorization Code + PKCE)
 
         B->>FA: GET /
         FA-->>B: index.html
@@ -31,7 +32,9 @@ sequenceDiagram
         B->>BFF: GET /auth/callback?code=X
         BFF->>AS: POST /token (code + codeVerifier)
         AS-->>BFF: { accessToken, user }
-        note over BFF: store user in session<br/>clear codeVerifier + returnTo
+        BFF->>CAS: POST /users/register { email, name }
+        CAS-->>BFF: { companyToken }
+        note over BFF: store user + companyToken in session<br/>clear codeVerifier + returnTo
         BFF-->>B: 302 → FRONTEND_URL/profile.html
 
         B->>BFF: fetch GET /auth/session
@@ -43,7 +46,7 @@ sequenceDiagram
     end
 
     rect rgb(220, 255, 220)
-        note over B,BFF: Simplified Magic Link Pattern (BFF only, no Auth Server)
+        note over B,CAS: Simplified Magic Link Pattern No OTP
 
         B->>FA: GET /
         FA-->>B: index.html (includes magic link form)
@@ -59,7 +62,10 @@ sequenceDiagram
         note over B: user opens email and clicks the link
 
         B->>BFF: GET /auth/magic/verify?token=UUID
-        note over BFF: validate token<br/>look up user by email<br/>store user in session<br/>clear token
+        note over BFF: validate token<br/>look up user by email<br/>clear token
+        BFF->>CAS: POST /users/register { email }
+        CAS-->>BFF: { companyToken }
+        note over BFF: store user + companyToken in session
         BFF-->>B: 302 → FRONTEND_URL/profile.html
 
         B->>BFF: fetch GET /auth/session
