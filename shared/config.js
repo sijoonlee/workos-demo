@@ -8,8 +8,17 @@ function required(name) {
 }
 
 const sessionSecret = required('SESSION_SECRET')
-const workosApiKey = required('WORKOS_API_KEY')
-const workosClientId = required('WORKOS_CLIENT_ID')
+
+const authProvider = process.env.AUTH_PROVIDER || 'workos' // 'workos' | 'keycloak'
+
+const workosApiKey = authProvider === 'workos' ? required('WORKOS_API_KEY') : ''
+const workosClientId = authProvider === 'workos' ? required('WORKOS_CLIENT_ID') : ''
+
+const keycloakBaseUrl = process.env.KEYCLOAK_BASE_URL || ''
+const keycloakRealm = process.env.KEYCLOAK_REALM || ''
+const keycloakClientId = process.env.KEYCLOAK_CLIENT_ID || ''
+const keycloakClientSecret = process.env.KEYCLOAK_CLIENT_SECRET || ''
+const keycloakIdpHint = process.env.KEYCLOAK_IDP_HINT || ''
 
 let frontendUrls, bffUrl
 if (isProduction) {
@@ -30,7 +39,13 @@ module.exports = {
   frontendUrls,
   bffUrl,
   sessionSecret,
+  authProvider,
   workosApiKey,
   workosClientId,
+  keycloakBaseUrl,
+  keycloakRealm,
+  keycloakClientId,
+  keycloakClientSecret,
+  keycloakIdpHint,
   cookie,
 }

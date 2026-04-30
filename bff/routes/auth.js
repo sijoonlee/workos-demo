@@ -1,10 +1,26 @@
 const crypto = require('crypto')
 const express = require('express')
-const { WorkOS } = require('@workos-inc/node')
 const config = require('../../shared/config')
+const WorkOSAdapter = require('../adapters/WorkOSAdapter')
+const KeycloakAdapter = require('../adapters/KeycloakAdapter')
 
 const router = express.Router()
-const workos = new WorkOS(config.workosApiKey)
+
+const adapters = {
+  workos: new WorkOSAdapter({
+    apiKey: config.workosApiKey,
+    clientId: config.workosClientId,
+  }),
+  keycloak: new KeycloakAdapter({
+    baseUrl: config.keycloakBaseUrl,
+    realm: config.keycloakRealm,
+    clientId: config.keycloakClientId,
+    clientSecret: config.keycloakClientSecret,
+    idpHint: config.keycloakIdpHint,
+  }),
+}
+
+const auth = adapters[config.authProvider] ?? adapters.workos
 
 function extractOrigin(url) {
   try {
@@ -31,16 +47,11 @@ router.get('/login', async (req, res) => {
   const codeVerifier = crypto.randomBytes(32).toString('base64url')
   const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url')
 
-  // The codeVerifier and returnTo are stored in the session so they survive the round-trip
-  // to WorkOS and back. The session is the only safe place — it lives server-side and
-  // never touches the browser. returnTo tells the callback which site initiated the login.
   req.session.codeVerifier = codeVerifier
   req.session.returnTo = origin
 
-  const authUrl = workos.userManagement.getAuthorizationUrl({
-    clientId: config.workosClientId,
+  const authUrl = auth.getAuthorizationUrl({
     redirectUri: `${config.bffUrl}/auth/callback`,
-    provider: 'GoogleOAuth',
     codeChallenge,
     codeChallengeMethod: 'S256',
   })
@@ -50,12 +61,14 @@ router.get('/login', async (req, res) => {
 
 router.get('/logout', (req, res) => {
   const origin = extractOrigin(req.query.returnTo)
-  const target = (origin && config.frontendUrls.includes(origin))
+  const returnTo = (origin && config.frontendUrls.includes(origin))
     ? origin
     : config.frontendUrls[0]
 
+  const idToken = req.session.idToken
   req.session.destroy(() => {
-    res.redirect(`${target}/`)
+    const logoutUrl = auth.getLogOutUrl({ returnTo: `${returnTo}/`, idToken })
+    res.redirect(logoutUrl ?? `${returnTo}/`)
   })
 })
 
@@ -68,17 +81,18 @@ router.get('/callback', async (req, res) => {
   if (!returnTo) return res.status(400).send('Missing return URL')
 
   try {
-    const { user } = await workos.userManagement.authenticateWithCodeAndVerifier({
+    const user = await auth.authenticateWithCode({
       code,
       codeVerifier,
-      clientId: config.workosClientId,
+      redirectUri: `${config.bffUrl}/auth/callback`,
     })
 
     req.session.user = {
-      firstName: user.firstName ?? '',
-      lastName: user.lastName ?? '',
+      firstName: user.firstName,
+      lastName: user.lastName,
       email: user.email,
     }
+    if (user.idToken) req.session.idToken = user.idToken
     delete req.session.codeVerifier
     delete req.session.returnTo
 
